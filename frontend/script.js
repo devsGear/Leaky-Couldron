@@ -27,8 +27,8 @@ const generateRoomCode = () => {
 const enterChat = (userName, roomCode, isHost) => {
     displayCode.textContent = roomCode;
     toggleVisibility([container], [mainChat]);
-    // Store user info for later use
     window.currentUser = { userName, roomCode, isHost };
+    saveToLocalStorage()
 };
 
 // Event Handlers
@@ -65,7 +65,7 @@ hostForm.addEventListener('submit', async (e) => {
     if (!hostName) return;
     
     const response = await createChatRoom(hostName);
-    if(response.success){
+    if(response.success){     
         enterChat(hostName, response.roomCode, true);
     }
 });
@@ -75,7 +75,7 @@ userForm.addEventListener('submit', async (e) => {
     const userName = document.getElementById('user-name').value.trim();
     const roomCode = document.getElementById('room-code').value.trim();
     if (!userName || !roomCode) return;
-
+    
     const response = await joinChatRoom(userName, roomCode);
     if (response.success) {
         enterChat(userName, roomCode, false);
@@ -102,15 +102,25 @@ sendBtn.addEventListener('click', (e) => {
     }
 })
 
-
-// Close chat handler
 closeChatBtn.addEventListener('click', () => {
+    localStorage.removeItem('chatSession');
+    
+    if (socket) {
+        socket.disconnect();
+    }
+    
     toggleVisibility([mainChat], [container]);
-    // Reset forms
+
     hostForm.reset();
     userForm.reset();
     const nameStep = document.querySelector('[data-step="name"]');
     const codeStep = document.querySelector('[data-step="code"]');
     toggleVisibility([formContainer, hostForm, userForm, codeStep], [menuOptions, nameStep]);
+    
+    window.currentUser = null;
 });
 
+function saveToLocalStorage(){
+    localStorage.setItem('chatSession', JSON.stringify(window.currentUser));
+    console.log(JSON.parse(localStorage.getItem('chatSession')));
+}

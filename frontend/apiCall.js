@@ -2,7 +2,8 @@ let socket = null;
 
 function initializeSocket() {
     if (!socket) {
-        socket = io("https://leaky-couldron.onrender.com/");
+        // socket = io("https://leaky-couldron.onrender.com/");
+        socket = io("http://localhost:3000");
         setupSocketListeners();
     }
     return socket;
@@ -11,19 +12,31 @@ function initializeSocket() {
 function createChatRoom(name){
     const socket = initializeSocket();
     return new Promise((res, rej) => {
-        if(name){
-            socket.emit('create-room', {name}, (resp) => {
-                res(resp);
-            });
-        };
+        socket.emit('create-room', { name: name }, (response) => {
+            if (response.success) {
+                localStorage.setItem('chatSession', JSON.stringify({
+                    roomCode: response.roomCode,
+                    userName: name,
+                    isHost: true
+                }));
+                res(response);
+            }
+        });
     });
 }
 
 function joinChatRoom(name, roomCode){
     const socket = initializeSocket();
     return new Promise((res, rej) => {
-        socket.emit('join-chat', { name, roomCode }, (resp) => {
-            res(resp);
+        socket.emit('join-chat', { name: name, roomCode: roomCode }, (response) => {
+            if (response.success) {
+                localStorage.setItem('chatSession', JSON.stringify({
+                    roomCode: roomCode,
+                    userName: name,
+                    isHost: false
+                }));
+                res(response);
+            }
         });
     })
 }
@@ -47,19 +60,32 @@ function setupSocketListeners() {
         addSystemMessage(`${name} joined the chat`);
     });
 
+    socket.on('user-reconnected', (data) => {
+        const { name } = data;
+        addSystemMessage(`${name} rejoined the chat`);
+    });
+
     socket.on('user-left', (data) => {
         const { userCount } = data;
         updateUserCount(userCount);
-        addSystemMessage('A user left the chat');
+        addSystemMessage(`${data.name} left the chat`);
     });
 
-    socket.on('host-disconnected', () => {
-        addSystemMessage('Host has left. Chat ended.');
-        // Optionally: close chat after a delay
+    socket.on('host-disconnected', (data) => {
+        addSystemMessage(`${data.name}[Host] has left the chat.`);
+    });
+
+    socket.on('host-reconnected', (data) => {
+        const { hostName } = data;
+        addSystemMessage(`${hostName}[Host] rejoined the chat`);
+    });
+
+    socket.on('chat-started', (data) => {
+        const { userCount } = data;
+        updateUserCount(userCount);
     });
 }
 
-// Helper functions to update UI
 function addMessageToChat(message, sender, timestamp) {
     const chatLog = document.getElementById('chat-log');
     const messageDiv = document.createElement('div');
@@ -95,3 +121,42 @@ function updateUserCount(count) {
     }
 }
 
+window.addEventListener('DOMContentLoaded', () => {
+    initializeSocket()
+    const session = localStorage.getItem('chatSession');
+    
+    if (session) {
+        const { roomCode, userName, isHost } = JSON.parse(session);
+        if (isHost) {
+            socket.emit('rejoin-as-host', { roomCode, name: userName }, (response) => {
+                if (response.success) {
+                    enterChat(userName, roomCode, true);
+                    // Add system message after UI is ready
+                    setTimeout(() => {
+                        addSystemMessage(`You rejoined the chat`);
+                    }, 100);
+                } else {
+                    localStorage.removeItem('chatSession');
+                    alert('Room expired or no longer exists');
+                }
+            });
+        } else {
+            socket.emit('join-chat', { 
+                name: userName, 
+                roomCode, 
+                isReconnect: true 
+            }, (response) => {
+                if (response.success) {
+                    enterChat(userName, roomCode, false);
+                    // Add system message after UI is ready
+                    setTimeout(() => {
+                        addSystemMessage(`You rejoined the chat`);
+                    }, 100);
+                } else {
+                    localStorage.removeItem('chatSession');
+                    alert('Room expired or no longer exists');
+                }
+            });
+        }
+    }
+});

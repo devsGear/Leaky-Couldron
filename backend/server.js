@@ -9,6 +9,7 @@ const app = express();
 const allowedOrigins = [
     'https://leaky-couldron.vercel.app',
     'http://localhost:5500',
+    'http://127.0.0.1:5500'
 ];
 
 app.use(cors({
@@ -61,8 +62,34 @@ io.on('connection', (socket) => {
         callback({ success: true, roomCode });
     })
 
+    socket.on('rejoin-as-host', (hostData, callback) => {
+        const { roomCode, name } = hostData;
+        const room = chatRooms.get(roomCode);
+
+        if (!room) {
+            callback({ success: false, message: 'Room no longer exists' });
+            return;
+        }
+
+        room.host = socket.id;
+        socket.join(roomCode);
+        
+        console.log(`Host ${name} reconnected to room ${roomCode} with new socket: ${socket.id}`);
+        
+        // Notify others (not self) that host reconnected
+        socket.broadcast.to(roomCode).emit('host-reconnected', { hostName: name });
+        
+        callback({ 
+            success: true, 
+            roomCode, 
+            isHost: true,
+            userCount: room.userCount,
+            hostName: room.hostName
+        });
+    });
+
     socket.on('join-chat', (userRes, callback) => {
-        const {name, roomCode} = userRes;
+        const {name, roomCode, isReconnect} = userRes;
 
         const room = chatRooms.get(roomCode);
 
@@ -71,18 +98,33 @@ io.on('connection', (socket) => {
             return;
         }
 
-        const userExists = room.users.find(u => u.name === name);
+        const existingUser = room.users.find(u => u.name === name);
         
-        if (!userExists) {
+        if (existingUser) {
+            // User is reconnecting, update their socket ID
+            existingUser.socketId = socket.id;
+            console.log(`User ${name} reconnected to room ${roomCode}`);
+        } else {
+            // New user joining
             room.users.push({ name, socketId: socket.id });
             room.userCount++;
         }
 
         socket.join(roomCode);
-        io.to(roomCode).emit('user-joined', { 
-            name, 
-            userCount: room.userCount 
-        });
+        
+        // Notify others AFTER joining the room
+        if (existingUser && isReconnect) {
+            // console.log(`Broadcasting user-reconnected for ${name} to room ${roomCode}`);
+            socket.broadcast.to(roomCode).emit('user-reconnected', { name });
+        }
+        
+        if (!existingUser || !isReconnect) {
+            // console.log(`Broadcasting user-joined for ${name} to room ${roomCode}`);
+            io.to(roomCode).emit('user-joined', { 
+                name, 
+                userCount: room.userCount 
+            });
+        }
 
         console.log(`User ${name} (${socket.id}) joined chat: ${roomCode}`);
         callback({ 
@@ -109,16 +151,18 @@ io.on('connection', (socket) => {
         
         for (const [roomCode, room] of chatRooms.entries()) {
             if (room.host === socket.id) {
-                io.to(roomCode).emit('host-disconnected');
-                chatRooms.delete(roomCode);
+                io.to(roomCode).emit('host-disconnected', {name: room.hostName});                
+                // chatRooms.delete(roomCode);
             } else {
                 const userIndex = room.users.findIndex(u => u.socketId === socket.id);
                 if (userIndex !== -1) {
+                    let username = room.users[userIndex].name;
                     room.users.splice(userIndex, 1);
                     room.userCount = room.users.length;
                     io.to(roomCode).emit('user-left', { 
                         socketId: socket.id,
-                        userCount: room.userCount
+                        userCount: room.userCount,
+                        name: username
                     });
                 }
             }
