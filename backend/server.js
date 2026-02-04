@@ -7,18 +7,23 @@ const GoogleStrategy = require('passport-google-oauth20').Strategy;
 const session = require('express-session');
 const dotenv = require('dotenv')
 
+dotenv.config()
+
 const socketConnection = require('./socket');
 const razorpayRoutes = require('./razorpay');
 
 const app = express();
 
-const allowedOrigins = [process.env.frontend_url];
+const allowedOrigins = [
+  process.env.frontend_url,
+  'http://localhost:5500',
+  'http://127.0.0.1:5500'
+];
 
 app.use(cors({
   origin: allowedOrigins,
   credentials: true
-}));
-dotenv.config()
+}))
 app.use(express.json());
 app.use(session({
   secret: process.env.SESSION_KEY,
