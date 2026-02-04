@@ -14,7 +14,6 @@ const razorpayRoutes = require('./razorpay');
 
 const app = express();
 
-// Trust proxy - REQUIRED for Render/Heroku to recognize secure connections
 app.set('trust proxy', 1);
 
 const allowedOrigins = [
@@ -101,11 +100,8 @@ app.get('/auth/google/callback',
     req.session.save((err) => {
       if (err) {
         console.error('Session save error:', err);
-        return res.redirect(`${process.env.frontend_url}/?auth=failed`);
-  console.log('🔍 Auth check - isAuthenticated:', req.isAuthenticated(), 'User:', req.user?.displayName || 'none');
-  
+        return res.redirect(`${process.env.frontend_url}/?auth=failed`);  
       }
-      console.log('✅ Session saved, user:', req.user?.displayName);
       res.redirect(`${process.env.frontend_url}/?auth=success`);
     });
   }
